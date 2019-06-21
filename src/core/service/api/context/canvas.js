@@ -1,4 +1,5 @@
 import createCallbacks from 'uni-helpers/callbacks'
+import { wrapper, pixelRatio } from 'uni-helpers/hidpi'
 
 const canvasEventCallbacks = createCallbacks('canvasEvent')
 
@@ -254,9 +255,16 @@ var methods3 = ['setFillStyle', 'setTextAlign', 'setStrokeStyle', 'setGlobalAlph
 ]
 
 var tempCanvas
-function getTempCanvas () {
+function getTempCanvas (width, height) {
   if (!tempCanvas) {
     tempCanvas = document.createElement('canvas')
+  }
+  if (typeof width !== 'undefined' && typeof height !== 'undefined') {
+    if (tempCanvas.width !== width || tempCanvas.height !== height) {
+      tempCanvas.width = width / pixelRatio
+      tempCanvas.height = height / pixelRatio
+      wrapper(tempCanvas)
+    }
   }
   return tempCanvas
 }
@@ -266,6 +274,8 @@ class CanvasContext {
     this.id = id
     this.pageId = pageId
     this.actions = []
+    this.path = []
+    this.subpath = []
     this.currentTransform = []
     this.currentStepAnimates = []
     this.drawingState = []
@@ -432,6 +442,150 @@ class CanvasContext {
     this.clearActions()
     return actions
   }
+  set lineDashOffset (value) {
+    this.actions.push({
+      method: 'setLineDashOffset',
+      data: [value]
+    })
+  }
+  set globalCompositeOperation (type) {
+    this.actions.push({
+      method: 'setGlobalCompositeOperation',
+      data: [type]
+    })
+  }
+  set shadowBlur (level) {
+    this.actions.push({
+      method: 'setShadowBlur',
+      data: [level]
+    })
+  }
+  set shadowColor (color) {
+    this.actions.push({
+      method: 'setShadowColor',
+      data: [color]
+    })
+  }
+  set shadowOffsetX (x) {
+    this.actions.push({
+      method: 'setShadowOffsetX',
+      data: [x]
+    })
+  }
+  set shadowOffsetY (y) {
+    this.actions.push({
+      method: 'setShadowOffsetY',
+      data: [y]
+    })
+  }
+  set font (value) {
+    var self = this
+    this.state.font = value
+    // eslint-disable-next-line
+    var fontFormat = value.match(/^(([\w\-]+\s)*)(\d+r?px)(\/(\d+\.?\d*(r?px)?))?\s+(.*)/)
+    if (fontFormat) {
+      var style = fontFormat[1].trim().split(/\s/)
+      var fontSize = parseFloat(fontFormat[3])
+      var fontFamily = fontFormat[7]
+      var actions = []
+      style.forEach(function (value, index) {
+        if (['italic', 'oblique', 'normal'].indexOf(value) > -1) {
+          actions.push({
+            method: 'setFontStyle',
+            data: [value]
+          })
+          self.state.fontStyle = value
+        } else if (['bold', 'normal'].indexOf(value) > -1) {
+          actions.push({
+            method: 'setFontWeight',
+            data: [value]
+          })
+          self.state.fontWeight = value
+        } else if (index === 0) {
+          actions.push({
+            method: 'setFontStyle',
+            data: ['normal']
+          })
+          self.state.fontStyle = 'normal'
+        } else if (index === 1) {
+          pushAction()
+        }
+      })
+      if (style.length === 1) {
+        pushAction()
+      }
+      style = actions.map(function (action) {
+        return action.data[0]
+      }).join(' ')
+      this.state.fontSize = fontSize
+      this.state.fontFamily = fontFamily
+      this.actions.push({
+        method: 'setFont',
+        data: [`${style} ${fontSize}px ${fontFamily}`]
+      })
+    } else {
+      console.warn("Failed to set 'font' on 'CanvasContext': invalid format.")
+    }
+    function pushAction () {
+      actions.push({
+        method: 'setFontWeight',
+        data: ['normal']
+      })
+      self.state.fontWeight = 'normal'
+    }
+  }
+  get font () {
+    return this.state.font
+  }
+  set fillStyle (color) {
+    this.setFillStyle(color)
+  }
+  set strokeStyle (color) {
+    this.setStrokeStyle(color)
+  }
+  set globalAlpha (value) {
+    value = Math.floor(255 * parseFloat(value))
+    this.actions.push({
+      method: 'setGlobalAlpha',
+      data: [value]
+    })
+  }
+  set textAlign (align) {
+    this.actions.push({
+      method: 'setTextAlign',
+      data: [align]
+    })
+  }
+  set lineCap (type) {
+    this.actions.push({
+      method: 'setLineCap',
+      data: [type]
+    })
+  }
+  set lineJoin (type) {
+    this.actions.push({
+      method: 'setLineJoin',
+      data: [type]
+    })
+  }
+  set lineWidth (value) {
+    this.actions.push({
+      method: 'setLineWidth',
+      data: [value]
+    })
+  }
+  set miterLimit (value) {
+    this.actions.push({
+      method: 'setMiterLimit',
+      data: [value]
+    })
+  }
+  set textBaseline (type) {
+    this.actions.push({
+      method: 'setTextBaseline',
+      data: [type]
+    })
+  }
 }
 
 [...methods1, ...methods2].forEach(function (method) {
@@ -517,10 +671,17 @@ methods3.forEach(function (method) {
       case 'setFillStyle':
       case 'setStrokeStyle':
         return function (color) {
-          this.actions.push({
-            method,
-            data: ['normal', checkColor(color)]
-          })
+          if (typeof color !== 'object') {
+            this.actions.push({
+              method,
+              data: ['normal', checkColor(color)]
+            })
+          } else {
+            this.actions.push({
+              method,
+              data: [color.type, color.data, color.colorStop]
+            })
+          }
         }
       case 'setGlobalAlpha':
         return function (alpha) {
@@ -664,13 +825,19 @@ export function canvasToTempFilePath ({
   fileType,
   qualit
 }, callbackId) {
+  if (typeof width !== 'undefined') {
+    width *= pixelRatio
+  }
+  if (typeof height !== 'undefined') {
+    height *= pixelRatio
+  }
   var pageId
   const app = getApp()
   if (app.$route && app.$route.params.__id__) {
     pageId = app.$route.params.__id__
   } else {
     invoke(callbackId, {
-      errMsg: 'canvasPutImageData:fail'
+      errMsg: 'canvasToTempFilePath:fail'
     })
     return
   }
@@ -690,24 +857,56 @@ export function canvasToTempFilePath ({
       })
       return
     }
-    var canvas = getTempCanvas()
-    canvas.width = data.width
-    canvas.height = data.height
+    var cWidth = (typeof destWidth !== 'undefined') ? (destWidth * pixelRatio) : data.width
+    var cHeight = (typeof destHeight !== 'undefined') ? (destHeight * pixelRatio) : data.height
+    var canvas = getTempCanvas(cWidth, cHeight)
     var c2d = canvas.getContext('2d')
-    c2d.putImageData(imgData, 0, 0)
-    var base64 = canvas.toDataURL('image/png')
-    var img = new Image()
-    img.onload = function () {
-      canvas.width = destWidth || imgData.width
-      canvas.height = destHeight || imgData.height
-      c2d.drawImage(img, 0, 0)
-      base64 = canvas.toDataURL(`image/${fileType.toLowerCase()}`, qualit)
-      invoke(callbackId, {
-        errMsg: 'canvasToTempFilePath:ok',
-        tempFilePath: base64
-      })
+    c2d.putImageData(imgData, 0, 0, 0, 0, imgData.width, imgData.height)
+    var imageType = (fileType ? fileType.toLowerCase() : 'png')
+    if (imageType === 'jpg') {
+      imageType = 'jpeg'
     }
-    img.src = base64
+
+    var dCanvas
+    var isDest = (typeof destWidth !== 'undefined' && typeof destHeight !== 'undefined')
+    if (isDest) {
+      dCanvas = document.createElement('canvas')
+      dCanvas.width = destWidth
+      dCanvas.height = destHeight
+    } else {
+      dCanvas = canvas.cloneNode(true)
+    }
+    var dCtx = dCanvas.getContext('2d')
+    if (imageType === 'jpeg') {
+      dCtx.fillStyle = '#fff'
+      dCtx.fillRect(0, 0, dCanvas.width, dCanvas.height)
+    }
+
+    if (isDest) {
+      dCtx.drawImageByCanvas(canvas, 0, 0, canvas.width, canvas.height, 0, 0, destWidth, destHeight, true)
+    } else {
+      dCtx.drawImage(canvas, 0, 0)
+    }
+    var base64 = dCanvas.toDataURL(`image/${imageType}`, qualit)
+
+    invoke(callbackId, {
+      errMsg: 'canvasToTempFilePath:ok',
+      tempFilePath: base64
+    })
+
+    // TODO base64返回的是高清图，如果将img通过drawImage画到等宽高的canvas会出现显示不全问题, drawImage在次做了高清处理
+    // var img = new Image()
+    // img.onload = function () {
+    //   canvas.width = destWidth || imgData.width
+    //   canvas.height = destHeight || imgData.height
+    //   c2d.drawImage(img, 0, 0)
+    //   base64 = canvas.toDataURL(`image/jpeg`, qualit)
+    //   invoke(callbackId, {
+    //     errMsg: 'canvasToTempFilePath:ok',
+    //     tempFilePath: base64
+    //   })
+    // }
+    // img.src = base64
   })
   operateCanvas(canvasId, pageId, 'getImageData', {
     x,

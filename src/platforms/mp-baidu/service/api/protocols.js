@@ -1,5 +1,6 @@
+import previewImage from '../../../mp-weixin/helpers/normalize-preview-image'
 // 不支持的 API 列表
-const TODOS = [
+const todos = [
   'hideKeyboard',
   'onGyroscopeChange',
   'startGyroscope',
@@ -32,6 +33,9 @@ const TODOS = [
   'offWindowResize'
 ]
 
+// 存在兼容性的 API 列表
+const canIUses = []
+
 function createTodoMethod (contextName, methodName) {
   return function unsupported () {
     console.error(`__PLATFORM_TITLE__ ${contextName}暂不支持${methodName}`)
@@ -55,12 +59,7 @@ const protocols = {
       method: false
     }
   },
-  previewImage: {
-    args: {
-      indicator: false,
-      loop: false
-    }
-  },
+  previewImage,
   getRecorderManager: {
     returnValue (fromRet) {
       fromRet.onFrameRecorded = createTodoMethod('RecorderManager', 'onFrameRecorded')
@@ -93,8 +92,8 @@ const protocols = {
   }
 }
 
-TODOS.forEach(todoApi => {
-  protocols[todoApi] = false
-})
-
-export default protocols
+export {
+  protocols,
+  todos,
+  canIUses
+}

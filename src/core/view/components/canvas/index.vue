@@ -2,15 +2,13 @@
   <uni-canvas
     :canvas-id="canvasId"
     :disable-scroll="disableScroll"
-    v-on="$listeners"
-    @touchmove="_touchmove"
-  >
+    v-on="_listeners">
     <canvas
       ref="canvas"
       width="300"
-      height="150"/>
+      height="150" />
     <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden;">
-      <slot/>
+      <slot />
     </div>
     <v-uni-resize-sensor
       ref="sensor"
@@ -22,10 +20,25 @@ import {
   subscriber
 } from 'uni-mixins'
 
+import {
+  wrapper
+} from 'uni-helpers/hidpi'
+
 function resolveColor (color) {
   color = color.slice(0)
   color[3] = color[3] / 255
   return 'rgba(' + color.join(',') + ')'
+}
+
+function processTouches (target, touches) {
+  return ([]).map.call(touches, (touch) => {
+    var boundingClientRect = target.getBoundingClientRect()
+    return {
+      identifier: touch.identifier,
+      x: touch.clientX - boundingClientRect.left,
+      y: touch.clientY - boundingClientRect.top
+    }
+  })
 }
 
 export default {
@@ -49,6 +62,28 @@ export default {
   computed: {
     id () {
       return this.canvasId
+    },
+    _listeners () {
+      var $listeners = Object.assign({}, this.$listeners)
+      var events = ['touchstart', 'touchmove', 'touchend']
+      events.forEach(event => {
+        var existing = $listeners[event]
+        var eventHandler = []
+        if (existing) {
+          eventHandler.push(($event) => {
+            this.$trigger(event, Object.assign({}, $event, {
+              touches: processTouches($event.currentTarget, $event.touches),
+              changedTouches: processTouches($event.currentTarget, $event
+                .changedTouches)
+            }))
+          })
+        }
+        if (this.disableScroll && event === 'touchmove') {
+          eventHandler.push(this._touchmove)
+        }
+        $listeners[event] = eventHandler
+      })
+      return $listeners
     }
   },
   created () {
@@ -71,17 +106,19 @@ export default {
         method(data)
       }
     },
-    _resize ({ width, height }) {
+    _resize ({
+      width,
+      height
+    }) {
       var canvas = this.$refs.canvas
-      if (canvas.width !== width || canvas.height !== height) {
+      if (canvas.style.width !== (width + 'px') || canvas.style.height !== (height + 'px')) {
         canvas.width = width
         canvas.height = height
+        wrapper(canvas)
       }
     },
     _touchmove (event) {
-      if (this.disableScroll) {
-        event.preventDefault()
-      }
+      event.preventDefault()
     },
     actionsChanged ({
       actions,
@@ -126,6 +163,7 @@ export default {
                 let color = resolveColor(data2[1])
                 LinearGradient.addColorStop(offset, color)
               })
+              color = LinearGradient
             } else if (data[0] === 'radial') {
               let x = data[1][0]
               let y = data[1][1]
@@ -136,12 +174,14 @@ export default {
                 let color = resolveColor(data2[1])
                 LinearGradient.addColorStop(offset, color)
               })
+              color = LinearGradient
             } else if (data[0] === 'pattern') {
-              let loaded = this.checkImageLoaded(data[1], actions.slice(index + 1), callbackId, function (image) {
-                if (image) {
-                  c2d[method1] = c2d.createPattern(image, data[2])
-                }
-              })
+              let loaded = this.checkImageLoaded(data[1], actions.slice(index + 1), callbackId,
+                function (image) {
+                  if (image) {
+                    c2d[method1] = c2d.createPattern(image, data[2])
+                  }
+                })
               if (!loaded) {
                 break
               }
@@ -189,9 +229,11 @@ export default {
             var url = dataArray[0]
             var otherData = dataArray.slice(1)
             self._images = self._images || {}
-            if (!self.checkImageLoaded(url, actions.slice(index + 1), callbackId, function (image) {
+            if (!self.checkImageLoaded(url, actions.slice(index + 1), callbackId, function (
+              image) {
               if (image) {
-                c2d.drawImage.apply(c2d, [image].concat([...otherData.slice(4, 8)], [...otherData.slice(0, 4)]))
+                c2d.drawImage.apply(c2d, [image].concat([...otherData.slice(4, 8)],
+                  [...otherData.slice(0, 4)]))
               }
             })) return 'break'
           }())
@@ -299,7 +341,8 @@ export default {
             sefl._images[src].src = src
           } else {
             // 解决 PLUS-APP（wkwebview）以及 H5 图像跨域问题（H5图像响应头需包含access-control-allow-origin）
-            if (window.plus && src.indexOf('http://') !== 0 && src.indexOf('https://') !== 0) {
+            if (window.plus && src.indexOf('http://') !== 0 && src.indexOf('https://') !==
+                                0) {
               loadFile(src)
             } else if (/^data:[a-z-]+\/[a-z-]+;base64,/.test(src)) {
               sefl._images[src].src = src
@@ -385,7 +428,8 @@ export default {
         if (!height) {
           height = Math.round(data.length / 4 / width)
         }
-        this.$refs.canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(data), width, height), x, y)
+        this.$refs.canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(data), width,
+          height), x, y)
       } catch (error) {
         UniViewJSBridge.publishHandler('onCanvasMethodCallback', {
           callbackId,
@@ -406,17 +450,18 @@ export default {
 }
 </script>
 <style>
-uni-canvas {
-  width: 300px;
-  height: 150px;
-  display: block;
-  position: relative;
-}
-uni-canvas > canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
+    uni-canvas {
+        width: 300px;
+        height: 150px;
+        display: block;
+        position: relative;
+    }
+
+    uni-canvas>canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
 </style>

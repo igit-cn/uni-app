@@ -6,6 +6,7 @@
         "dev:h5": "npm run lint && cross-env NODE_ENV=production UNI_WATCH=true UNI_PLATFORM=h5 node build/build.js",
         "build:h5": "npm run lint && cross-env NODE_ENV=production UNI_WATCH=false UNI_PLATFORM=h5 node build/build.js",
         "build:app-plus": "npm run lint && cross-env UNI_PLATFORM=app-plus rollup -c build/rollup.config.js",
+        "build:service:legacy": "npm run lint && rollup -c build/rollup.config.service.js",
         "build:mp-weixin": "npm run lint && cross-env UNI_PLATFORM=mp-weixin rollup -c build/rollup.config.js",
         "build:mp-baidu": "npm run lint && cross-env UNI_PLATFORM=mp-baidu rollup -c build/rollup.config.js",
         "build:mp-alipay": "npm run lint && cross-env UNI_PLATFORM=mp-alipay rollup -c build/rollup.config.js",
@@ -22,6 +23,7 @@
         "@vue/test-utils": "^1.0.0-beta.25",
         "babel-eslint": "^10.0.1",
         "babylon": "^6.18.0",
+        "base64-arraybuffer": "^0.2.0",
         "browserslist": "^4.4.2",
         "caniuse-lite": "^1.0.30000940",
         "chai": "^4.1.2",
@@ -60,6 +62,7 @@
             "App": true,
             "Page": true,
             "Component": true,
+            "Behavior": true,
             "getApp": true,
             "getCurrentPages": true,
             "plus": true,
@@ -75,7 +78,8 @@
             "__PLATFORM__": true,
             "__VERSION__": true,
             "__GLOBAL__": true,
-            "__PLATFORM_TITLE__": true
+            "__PLATFORM_TITLE__": true,
+            "__PLATFORM_PREFIX__": true
         },
         "rules": {
             "no-tabs": 0,

@@ -36,11 +36,13 @@ module.exports = {
   plugins: [
     alias({
       'uni-shared': path.resolve(__dirname, '../src/shared/util.js'),
-      'uni-platform': path.resolve(__dirname, '../src/platforms/' + process.env.UNI_PLATFORM)
+      'uni-platform': path.resolve(__dirname, '../src/platforms/' + process.env.UNI_PLATFORM),
+      'uni-wrapper': path.resolve(__dirname, '../src/core/runtime/wrapper')
     }),
     replace({
       __GLOBAL__: platform.prefix,
       __PLATFORM_TITLE__: platform.title,
+      __PLATFORM_PREFIX__: JSON.stringify(platform.prefix),
       __PLATFORM__: JSON.stringify(process.env.UNI_PLATFORM)
     })
   ],

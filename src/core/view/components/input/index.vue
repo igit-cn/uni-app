@@ -10,6 +10,7 @@
         :type="inputType"
         :maxlength="maxlength"
         :step="step"
+        autocomplete="off"
         @focus="_onFocus"
         @blur="_onBlur"
         @input.stop="_onInput"
@@ -286,7 +287,7 @@ export default {
 
 	uni-input input {
 		position: relative;
-		min-height: 1.4rem;
+		min-height: inherit;
 		border: none;
 		height: inherit;
 		width: 100%;
@@ -315,7 +316,7 @@ export default {
 
 	uni-input div {
 		position: relative;
-		min-height: 1.4rem;
+		min-height: inherit;
 		text-overflow: inherit;
 		border: none;
 		height: inherit;
@@ -341,64 +342,14 @@ export default {
 		left: 0;
 		top: 0;
 		width: 100%;
-		height: 100%;
-		line-height: 100%;
 		height: inherit;
-		min-height: 1.4rem;
+		line-height: 100%;
+		min-height: inherit;
 		white-space: pre;
 		text-align: inherit;
 		overflow: hidden;
 		vertical-align: middle;
 		z-index: 1;
-	}
-
-	uni-input ul {
-		position: fixed;
-		left: 0;
-		right: 0;
-		z-index: 999999;
-		padding: 0;
-		background-color: white;
-		border: 0.5px solid #cccccc;
-		max-height: 204px;
-		min-height: 51px;
-		overflow: auto;
-	}
-
-	uni-input ul li {
-		display: block;
-		padding: 10px;
-		position: relative;
-		padding: 10px 0;
-		border-bottom: 0.5px solid #cccccc;
-		margin: 0 15px;
-	}
-
-	uni-input ul li:last-child {
-		border-bottom: none;
-	}
-
-	uni-input ul li .title {
-		font-weight: bold;
-		font-size: 18px;
-		margin-right: 50px;
-	}
-
-	uni-input ul li .content {
-		font-size: 12px;
-		color: #cccccc;
-		margin-right: 50px;
-	}
-
-	uni-input ul li .del {
-		position: absolute;
-		width: 50px;
-		height: 50px;
-		line-height: 50px;
-		top: 50%;
-		right: 0;
-		margin-top: -25px;
-		text-align: center;
 	}
 
 	.input-placeholder {

@@ -346,7 +346,8 @@ export default {
         this.$emit('boundsready')
       })
       maps.event.addListener(map, 'click', () => {
-        this.$trigger('tap', {}, {})
+        // TODO 编译器将 tap 转换为click
+        this.$trigger('click', {}, {})
       })
       maps.event.addListener(map, 'dragstart', () => {
         this.$trigger('regionchange', {}, {
@@ -790,7 +791,7 @@ export default {
         maps = window.qq.maps
         callback()
       } else {
-        let key = 'JMRBZ-R4HCD-X674O-PXLN4-B7CLH-42BSB'
+        let key = __uniConfig.qqMapKey
         let callbackName = '_callback' + Date.now()
         window[callbackName] = function () {
           delete window[callbackName]

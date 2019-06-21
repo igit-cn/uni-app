@@ -7,9 +7,9 @@
 <script>
 import touchtrack from 'uni-mixins/touchtrack'
 import {
-  N,
-  I,
-  O
+  Decline,
+  Friction,
+  STD
 } from './utils'
 
 var requesting = false
@@ -126,6 +126,10 @@ export default {
     scaleValue: {
       type: [Number, String],
       default: 1
+    },
+    animation: {
+      type: [Boolean, String],
+      default: true
     }
   },
   data () {
@@ -205,10 +209,10 @@ export default {
     this._scale = 1
     this._oldScale = 1
 
-    this._STD = new O(1, 9 * Math.pow(this.dampingNumber, 2) / 40, this.dampingNumber)
-    this._friction = new I(1, this.frictionNumber)
-    this._declineX = new N()
-    this._declineY = new N()
+    this._STD = new STD(1, 9 * Math.pow(this.dampingNumber, 2) / 40, this.dampingNumber)
+    this._friction = new Friction(1, this.frictionNumber)
+    this._declineX = new Decline()
+    this._declineY = new Decline()
     this.__touchInfo = {
       historyX: [0, 0],
       historyY: [0, 0],
@@ -566,6 +570,10 @@ export default {
       var limitXY = this._getLimitXY(x, y)
       x = limitXY.x
       y = limitXY.y
+      if (!this.animation) {
+        this._setTransform(x, y, scale, source, r, o)
+        return
+      }
       this._STD._springX._solution = null
       this._STD._springY._solution = null
       this._STD._springScale._solution = null
@@ -619,6 +627,8 @@ export default {
       scale = +scale.toFixed(3)
       if (o && scale !== this._scale) {
         this.$trigger('scale', {}, {
+          x: x,
+          y: y,
           scale: scale
         })
       }

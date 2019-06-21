@@ -2,7 +2,7 @@ import {
   isFn
 } from 'uni-shared'
 
-const SYNC_API_RE = /hideKeyboard|upx2px|canIUse|^create|Sync$|Manager$/
+const SYNC_API_RE = /^\$|getSubNVueById|requireNativePlugin|upx2px|hideKeyboard|canIUse|^create|Sync$|Manager$|base64ToArrayBuffer|arrayBufferToBase64/
 
 const CONTEXT_API_RE = /^create|Manager$/
 
@@ -33,10 +33,11 @@ function handlePromise (promise) {
 }
 
 export function shouldPromise (name) {
-  if (isSyncApi(name)) {
-    return false
-  }
-  if (isCallbackApi(name)) {
+  if (
+    isContextApi(name) ||
+        isSyncApi(name) ||
+        isCallbackApi(name)
+  ) {
     return false
   }
   return true
@@ -56,14 +57,16 @@ export function promisify (name, api) {
         fail: reject
       }), ...params)
       /* eslint-disable no-extend-native */
-      Promise.prototype.finally = function (callback) {
-        const promise = this.constructor
-        return this.then(
-          value => promise.resolve(callback()).then(() => value),
-          reason => promise.resolve(callback()).then(() => {
-            throw reason
-          })
-        )
+      if (!Promise.prototype.finally) {
+        Promise.prototype.finally = function (callback) {
+          const promise = this.constructor
+          return this.then(
+            value => promise.resolve(callback()).then(() => value),
+            reason => promise.resolve(callback()).then(() => {
+              throw reason
+            })
+          )
+        }
       }
     }))
   }

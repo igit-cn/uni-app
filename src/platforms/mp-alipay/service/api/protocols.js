@@ -1,5 +1,5 @@
 // 不支持的 API 列表
-const TODOS = [
+const todos = [
   'saveImageToPhotosAlbum',
   'getRecorderManager',
   'getBackgroundAudioManager',
@@ -14,17 +14,8 @@ const TODOS = [
   'startAccelerometer',
   'startCompass',
   'addPhoneContact',
-  'setTabBarItem',
-  'setTabBarStyle',
-  'hideTabBar',
-  'showTabBar',
-  'setTabBarBadge',
-  'removeTabBarBadge',
-  'showTabBarRedDot',
-  'hideTabBarRedDot',
   'setBackgroundColor',
   'setBackgroundTextStyle',
-  'startPullDownRefresh',
   'createIntersectionObserver',
   'authorize',
   'openSetting',
@@ -43,6 +34,19 @@ const TODOS = [
   'getExtConfigSync',
   'onWindowResize',
   'offWindowResize'
+]
+
+// 存在兼容性的 API 列表
+const canIUses = [
+  'startPullDownRefresh',
+  'setTabBarItem',
+  'setTabBarStyle',
+  'hideTabBar',
+  'showTabBar',
+  'setTabBarBadge',
+  'removeTabBarBadge',
+  'showTabBarRedDot',
+  'hideTabBarRedDot'
 ]
 
 function _handleNetworkInfo (result) {
@@ -70,7 +74,7 @@ function _handleSystemInfo (result) {
 }
 
 const protocols = { // 需要做转换的 API 列表
-  returnValue (methodName, res) { // 通用 returnValue 解析
+  returnValue (methodName, res = {}) { // 通用 returnValue 解析
     if (res.error || res.errorMessage) {
       res.errMsg = `${methodName}:fail ${res.errorMessage || res.error}`
       delete res.error
@@ -81,7 +85,7 @@ const protocols = { // 需要做转换的 API 列表
     return res
   },
   request: {
-    name: 'httpRequest',
+    name: my.canIUse('request') ? 'request' : 'httpRequest',
     args (fromArgs) {
       if (!fromArgs.header) { // 默认增加 header 参数，方便格式化 content-type
         fromArgs.header = {}
@@ -211,9 +215,14 @@ const protocols = { // 需要做转换的 API 列表
   previewImage: {
     args (fromArgs) {
       // 支付宝小程序的 current 是索引值，而非图片地址。
-      if (fromArgs.current && Array.isArray(fromArgs.urls)) {
-        const index = fromArgs.urls.indexOf(fromArgs.current)
-        fromArgs.current = ~index ? index : 0
+      const currentIndex = Number(fromArgs.current)
+      if (isNaN(currentIndex)) {
+        if (fromArgs.current && Array.isArray(fromArgs.urls)) {
+          const index = fromArgs.urls.indexOf(fromArgs.current)
+          fromArgs.current = ~index ? index : 0
+        }
+      } else {
+        fromArgs.current = currentIndex
       }
       return {
         indicator: false,
@@ -316,7 +325,7 @@ const protocols = { // 需要做转换的 API 列表
   requestPayment: {
     name: 'tradePay',
     args: {
-      orderInfo: 'orderStr'
+      orderInfo: 'tradeNO'
     }
   },
   getBLEDeviceServices: {
@@ -359,8 +368,8 @@ const protocols = { // 需要做转换的 API 列表
   }
 }
 
-TODOS.forEach(todoApi => {
-  protocols[todoApi] = false
-})
-
-export default protocols
+export {
+  protocols,
+  todos,
+  canIUses
+}
