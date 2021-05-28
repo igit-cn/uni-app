@@ -1,16 +1,27 @@
 import getRealRoute from 'uni-helpers/get-real-route'
 
 const SCHEME_RE = /^([a-z-]+:)?\/\//i
-const BASE64_RE = /^data:[a-z-]+\/[a-z-]+;base64,/
+const DATA_RE = /^data:.*,.*/
 
 function addBase (filePath) {
-  if (__uniConfig.router.base) {
-    return __uniConfig.router.base + filePath
+  const base = __uniConfig.router.base
+  if (!base) {
+    return filePath
   }
-  return filePath
+  if (base !== '/') {
+    // 部分地址已经带了base(如被webpack处理过的资源自动带了publicPath)
+    if (('/' + filePath).indexOf(base) === 0) {
+      return '/' + filePath
+    }
+  }
+  return base + filePath
 }
 
 export default function getRealPath (filePath) {
+  // 相对路径模式对静态资源路径特殊处理
+  if (__uniConfig.router.base === './') {
+    filePath = filePath.replace(/^\.\/static\//, '/static/')
+  }
   if (filePath.indexOf('/') === 0) {
     if (filePath.indexOf('//') === 0) {
       filePath = 'https:' + filePath
@@ -19,7 +30,7 @@ export default function getRealPath (filePath) {
     }
   }
   // 网络资源或base64
-  if (SCHEME_RE.test(filePath) || BASE64_RE.test(filePath) || filePath.indexOf('blob:') === 0) {
+  if (SCHEME_RE.test(filePath) || DATA_RE.test(filePath) || filePath.indexOf('blob:') === 0) {
     return filePath
   }
 

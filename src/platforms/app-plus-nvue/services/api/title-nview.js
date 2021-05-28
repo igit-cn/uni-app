@@ -1,12 +1,12 @@
-import {
-  noop
-} from './util'
+function noop () {}
+
 export function initTitleNView (nvue) {
   const eventMaps = {
     onNavigationBarButtonTap: noop,
     onNavigationBarSearchInputChanged: noop,
     onNavigationBarSearchInputConfirmed: noop,
-    onNavigationBarSearchInputClicked: noop
+    onNavigationBarSearchInputClicked: noop,
+    onNavigationBarSearchInputFocusChanged: noop
   }
   nvue.requireModule('globalEvent').addEventListener('plusMessage', e => {
     if (eventMaps[e.data.type]) {

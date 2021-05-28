@@ -2,7 +2,7 @@ import {
   isFn
 } from 'uni-shared'
 
-import providers from 'uni-platform/service/api/providers'
+import providers from 'uni-platform/runtime/api/providers'
 
 export function getProvider ({
   service,
@@ -20,7 +20,7 @@ export function getProvider ({
     isFn(success) && success(res)
   } else {
     res = {
-      errMsg: 'getProvider:fail:服务[' + service + ']不存在'
+      errMsg: 'getProvider:fail service not found'
     }
     isFn(fail) && fail(res)
   }

@@ -2,53 +2,65 @@
   <uni-input v-on="$listeners">
     <div
       ref="wrapper"
-      :disabled="disabled">
+      class="uni-input-wrapper"
+    >
+      <div
+        v-show="!(composing || valueSync.length || !valid)"
+        ref="placeholder"
+        :style="placeholderStyle"
+        :class="placeholderClass"
+        class="uni-input-placeholder"
+        v-text="placeholder"
+      />
       <input
+        v-if="!disabled || !fixColor"
         ref="input"
-        v-model="inputValue"
+        v-model="valueSync"
+        v-keyboard
+        v-field
         :disabled="disabled"
         :type="inputType"
         :maxlength="maxlength"
         :step="step"
+        :enterkeyhint="confirmType"
+        class="uni-input-input"
         autocomplete="off"
+        @change.stop
         @focus="_onFocus"
         @blur="_onBlur"
         @input.stop="_onInput"
-        @compositionstart="_onComposition"
-        @compositionend="_onComposition"
-        @keyup.stop="_onKeyup">
-      <div
-        v-show="!(composing || inputValue.length)"
-        ref="placeholder"
-        :style="placeholderStyle"
-        :class="placeholderClass"
-        class="input-placeholder">{{ placeholder }}</div>
+        @compositionstart.stop="_onComposition"
+        @compositionend.stop="_onComposition"
+        @keyup.enter.stop="_onKeyup"
+      >
+      <!-- fix: 禁止 readonly 状态获取焦点 -->
+      <input
+        v-if="disabled && fixColor"
+        ref="input"
+        :value="valueSync"
+        tabindex="-1"
+        :readonly="disabled"
+        :type="inputType"
+        :maxlength="maxlength"
+        :step="step"
+        class="uni-input-input"
+        @focus="($event) => $event.target.blur()"
+      >
     </div>
-    <v-uni-resize-sensor
-      ref="sensor"
-      @resize="_resize" />
   </uni-input>
 </template>
 <script>
 import {
-  emitter
+  field
 } from 'uni-mixins'
 const INPUT_TYPES = ['text', 'number', 'idcard', 'digit', 'password']
 const NUMBER_TYPES = ['number', 'digit']
 export default {
   name: 'Input',
-  mixins: [emitter],
-  model: {
-    prop: 'value',
-    event: 'update:value'
-  },
+  mixins: [field],
   props: {
     name: {
       type: String,
-      default: ''
-    },
-    value: {
-      type: [String, Number],
       default: ''
     },
     type: {
@@ -69,7 +81,7 @@ export default {
     },
     placeholderClass: {
       type: String,
-      default: ''
+      default: 'input-placeholder'
     },
     disabled: {
       type: [Boolean, String],
@@ -79,10 +91,6 @@ export default {
       type: [Number, String],
       default: 140
     },
-    focus: {
-      type: [Boolean, String],
-      default: false
-    },
     confirmType: {
       type: String,
       default: 'done'
@@ -90,11 +98,9 @@ export default {
   },
   data () {
     return {
-      inputValue: this.value + '',
-      composing: false,
+      valid: true,
       wrapperHeight: 0,
-      cachedValue: '',
-      isRendered: false
+      cachedValue: ''
     }
   },
   computed: {
@@ -123,18 +129,9 @@ export default {
     }
   },
   watch: {
-    focus (value) {
-      value && this._focusInput()
-    },
-    value (value) {
-      this.inputValue = value + ''
-    },
-    inputValue (value) {
-      this.$emit('update:value', value)
-    },
     maxlength (value) {
-      const realValue = this.inputValue.slice(0, parseInt(value, 10))
-      realValue !== this.inputValue && (this.inputValue = realValue)
+      const realValue = this.valueSync.slice(0, parseInt(value, 10))
+      realValue !== this.valueSync && (this.valueSync = realValue)
     }
   },
   created () {
@@ -144,19 +141,25 @@ export default {
     })
   },
   mounted () {
-    this._initInputStyle()
-
     if (this.confirmType === 'search') {
-      var formElem = document.createElement('form')
+      const formElem = document.createElement('form')
       formElem.action = ''
       formElem.onsubmit = function () {
         return false
       }
+      formElem.className = 'uni-input-form'
       formElem.appendChild(this.$refs.input)
       this.$refs.wrapper.appendChild(formElem)
     }
 
-    this.focus && this._focusInput()
+    let $vm = this
+    while ($vm) {
+      const scopeId = $vm.$options._scopeId
+      if (scopeId) {
+        this.$refs.placeholder.setAttribute(scopeId, '')
+      }
+      $vm = $vm.$parent
+    }
   },
   beforeDestroy () {
     this.$dispatch('Form', 'uni-form-group-update', {
@@ -165,59 +168,31 @@ export default {
     })
   },
   methods: {
-    _resize () {
-      if (!this.isRendered) {
-        this._initInputStyle()
-      }
-    },
-    _initInputStyle () {
-      const wrapper = this.$refs.wrapper
-      const computedStyle = window.getComputedStyle(wrapper)
-      const rectStyle = wrapper.getBoundingClientRect()
-      const inputElem = this.$refs.input
-      const placeholderElem = this.$refs.placeholder
-
-      // 获取到的高度为 0 则认为组件未渲染，通常是使用 v-show 时会出现此情况。
-      if (!rectStyle.height) {
-        return
-      } else {
-        this.isRendered = true
-      }
-      // 渲染之后进行计算，设置实际的高度等样式。
-      const realHeight = rectStyle.height - (parseFloat(computedStyle.borderTopWidth, 10) + parseFloat(computedStyle.borderBottomWidth,
-        10))
-      if (realHeight !== this.wrapperHeight) {
-        inputElem.style.height = `${realHeight}px`
-        inputElem.style.lineHeight = `${realHeight}px`
-        this.wrapperHeight = realHeight
-      }
-      // inputElem.style.color = computedStyle.color
-
-      placeholderElem.style.height = `${realHeight}px`
-      placeholderElem.style.lineHeight = `${realHeight}px`
-    },
     _onKeyup ($event) {
-      if ($event.keyCode === 13) {
-        this.$trigger('confirm', $event, {
-          value: $event.target.value
-        })
-      }
+      this.$trigger('confirm', $event, {
+        value: $event.target.value
+      })
     },
-    _onInput ($event) {
+    _onInput ($event, force) {
       if (this.composing) {
         return
       }
 
-      // 处理部分输入法可以输入其它字符的情况
       if (~NUMBER_TYPES.indexOf(this.type)) {
-        if (this.$refs.input.validity && !this.$refs.input.validity.valid) {
+        // 在输入 - 负号 的情况下，event.target.value没有值，但是会触发校验 false，因此做此处理
+        this.valid = this.$refs.input.validity && this.$refs.input.validity.valid
+        this.cachedValue = this.valueSync
+
+        // 处理部分输入法可以输入其它字符的情况
+        // 上一处理导致无法输入 - ，因此去除
+        /* if (this.$refs.input.validity && !this.$refs.input.validity.valid) {
           $event.target.value = this.cachedValue
-          this.inputValue = $event.target.value
+          this.valueSync = $event.target.value
           // 输入非法字符不触发 input 事件
           return
         } else {
-          this.cachedValue = this.inputValue
-        }
+          this.cachedValue = this.valueSync
+        } */
       }
 
       // type="number" 不支持 maxlength 属性，因此需要主动限制长度。
@@ -225,49 +200,30 @@ export default {
         const maxlength = parseInt(this.maxlength, 10)
         if (maxlength > 0 && $event.target.value.length > maxlength) {
           $event.target.value = $event.target.value.slice(0, maxlength)
-          this.inputValue = $event.target.value
+          this.valueSync = $event.target.value
           // 字符长度超出范围不触发 input 事件
           return
         }
       }
-
-      this.$trigger('input', $event, {
-        value: this.inputValue
-      })
-    },
-    _onFocus ($event) {
-      this.$trigger('focus', $event, {
-        value: $event.target.value
-      })
-    },
-    _onBlur ($event) {
-      this.$trigger('blur', $event, {
-        value: $event.target.value
-      })
-    },
-    _focusInput () {
-      setTimeout(() => {
-        this.$refs.input.focus()
-      }, 350)
-    },
-    _blurInput () {
-      setTimeout(() => {
-        this.$refs.input.blur()
-      }, 350)
+      this.$triggerInput($event, {
+        value: this.valueSync
+      }, force)
     },
     _onComposition ($event) {
       if ($event.type === 'compositionstart') {
         this.composing = true
-      } else {
+      } else if (this.composing) {
         this.composing = false
+        // 部分输入法 compositionend 事件可能晚于 input
+        this._onInput($event)
       }
     },
     _resetFormData () {
-      this.inputValue = ''
+      this.valueSync = ''
     },
     _getFormData () {
       return this.name ? {
-        value: this.inputValue,
+        value: this.valueSync,
         key: this.name
       } : {}
     }
@@ -275,101 +231,90 @@ export default {
 }
 </script>
 <style>
-	uni-input {
-		display: block;
-		height: 1.4rem;
-		text-overflow: clip;
-		overflow: hidden;
-		white-space: nowrap;
-		font-family: UICTFontTextStyleBody;
-		min-height: 1.4rem;
-	}
+uni-input {
+  display: block;
+  font-size: 16px;
+  line-height: 1.4em;
+  height: 1.4em;
+  min-height: 1.4em;
+  overflow: hidden;
+}
 
-	uni-input input {
-		position: relative;
-		min-height: inherit;
-		border: none;
-		height: inherit;
-		width: 100%;
-		font-size: inherit;
-		font-weight: inherit;
-		font-family: UICTFontTextStyleBody;
-		color: inherit;
-		background: transparent;
-		display: inherit;
-		padding: 0;
-		margin: 0;
-		outline: none;
-		vertical-align: middle;
-		text-align: inherit;
-		overflow: inherit;
-		white-space: inherit;
-		text-overflow: inherit;
-		-webkit-tap-highlight-color: transparent;
-		z-index: 2;
-		opacity: inherit;
-	}
+uni-input[hidden] {
+  display: none;
+}
 
-	uni-input[hidden] {
-		display: none;
-	}
+.uni-input-wrapper,
+.uni-input-placeholder,
+.uni-input-form,
+.uni-input-input {
+  outline: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-decoration: inherit;
+}
 
-	uni-input div {
-		position: relative;
-		min-height: inherit;
-		text-overflow: inherit;
-		border: none;
-		height: inherit;
-		width: inherit;
-		font-size: inherit;
-		font-weight: inherit;
-		font-family: UICTFontTextStyleBody;
-		color: inherit;
-		background: inherit;
-		padding: 0;
-		margin: 0;
-		outline: none;
-		text-align: inherit;
-		-webkit-tap-highlight-color: transparent;
-	}
+.uni-input-wrapper,
+.uni-input-form {
+  display: flex;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+}
 
-	uni-input div[type=password] div {
-		color: black;
-	}
+.uni-input-placeholder,
+.uni-input-input {
+  width: 100%;
+}
 
-	uni-input div div {
-		position: absolute;
-		left: 0;
-		top: 0;
-		width: 100%;
-		height: inherit;
-		line-height: 100%;
-		min-height: inherit;
-		white-space: pre;
-		text-align: inherit;
-		overflow: hidden;
-		vertical-align: middle;
-		z-index: 1;
-	}
+.uni-input-placeholder {
+  position: absolute;
+  top: auto !important;
+  left: 0;
+  color: gray;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: pre;
+  word-break: keep-all;
+  pointer-events: none;
+  line-height: inherit;
+}
 
-	.input-placeholder {
-		color: gray;
-		height: inherit;
-		line-height: inherit;
-    background: none;
-	}
+.uni-input-input {
+  position: relative;
+  display: block;
+  height: 100%;
+  background: none;
+  color: inherit;
+  opacity: 1;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-indent: inherit;
+  text-transform: inherit;
+  text-shadow: inherit;
+}
 
-	input[type="search"]::-webkit-search-cancel-button {
-		display: none;
-	}
+.uni-input-input[type="search"]::-webkit-search-cancel-button {
+  display: none;
+}
 
-	input::-webkit-outer-spin-button,
-	input::-webkit-inner-spin-button {
-		-webkit-appearance: none;
-		margin: 0;
-	}
+.uni-input-input::-webkit-outer-spin-button,
+.uni-input-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
-	input[type="number"] {
-		-moz-appearance: textfield;
-	}
+.uni-input-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.uni-input-input:disabled {
+  /* 用于重置iOS14以下禁用状态文字颜色 */
+  -webkit-text-fill-color: currentcolor;
+}
 </style>

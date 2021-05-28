@@ -1,12 +1,8 @@
 import VueRouter from 'vue-router'
 
 import {
-  isFn
-} from 'uni-shared'
-
-import {
   isPage
-} from 'uni-helpers'
+} from 'uni-helpers/index'
 
 import {
   createAppMixin
@@ -15,6 +11,14 @@ import {
 import {
   createPageMixin
 } from './page'
+
+import {
+  lifecycleMixin
+} from './lifecycle'
+
+import {
+  initPolyfill
+} from './polyfill'
 
 import {
   getTabBarScrollPosition
@@ -56,6 +60,24 @@ export default {
   install (Vue, {
     routes
   } = {}) {
+    if (
+      __PLATFORM__ === 'h5' &&
+      Vue.config.devtools &&
+      typeof window !== 'undefined' &&
+      window.navigator.userAgent.toLowerCase().indexOf('hbuilderx') !== -1
+    ) {
+      // HBuilderX 内置浏览器禁用 devtools 提示
+      Vue.config.devtools = false
+    }
+
+    initPolyfill(Vue)
+
+    lifecycleMixin(Vue)
+
+    /* eslint-disable no-undef */
+    if (typeof __UNI_ROUTER_BASE__ !== 'undefined') {
+      __uniConfig.router.base = __UNI_ROUTER_BASE__
+    }
     const minId = getMinId(routes)
     const router = new VueRouter({
       id: minId,
@@ -68,9 +90,9 @@ export default {
         } else {
           if (
             to &&
-                        from &&
-                        to.meta.isTabBar &&
-                        from.meta.isTabBar
+            from &&
+            to.meta.isTabBar &&
+            from.meta.isTabBar
           ) { // tabbar 跳 tabbar
             const position = getTabBarScrollPosition(to.params.__id__)
             if (position) {
@@ -89,6 +111,7 @@ export default {
     // 需跨平台，根据用户配置 hash 或 history 来调用
     const entryRoute = router.match(__uniConfig.router.mode === 'history' ? getLocation(__uniConfig.router.base)
       : getHash())
+
     if (entryRoute.meta.name) {
       if (entryRoute.meta.id) {
         keepAliveInclude.push(entryRoute.meta.name + '-' + entryRoute.meta.id)
@@ -101,6 +124,11 @@ export default {
     if (__PLATFORM__ === 'h5') {
       if (entryRoute.meta && entryRoute.meta.name) {
         document.body.className = 'uni-body ' + entryRoute.meta.name
+        if (entryRoute.meta.isNVue) {
+          const nvueDirKey = 'nvue-dir-' + __uniConfig.nvue['flex-direction']
+          document.body.setAttribute('nvue', '')
+          document.body.setAttribute(nvueDirKey, '')
+        }
       }
     }
 
@@ -125,18 +153,24 @@ export default {
           options.router = router
 
           // onError
-          if (!isFn(options.onError)) {
-            options.onError = function (err) {
+          if (!Array.isArray(options.onError) || options.onError.length === 0) {
+            options.onError = [function (err) {
               console.error(err)
-            }
+            }]
           }
         } else if (isPage(this)) {
           const pageMixin = createPageMixin()
           // mixin page hooks
           Object.keys(pageMixin).forEach(hook => {
-            options[hook] = options[hook] ? [].concat(pageMixin[hook], options[hook]) : [
-              pageMixin[hook]
-            ]
+            if (options.mpOptions) { // 小程序适配出来的 vue 组件（保证先调用小程序适配里的 created，再触发 onLoad）
+              options[hook] = options[hook] ? [].concat(options[hook], pageMixin[hook]) : [
+                pageMixin[hook]
+              ]
+            } else {
+              options[hook] = options[hook] ? [].concat(pageMixin[hook], options[hook]) : [
+                pageMixin[hook]
+              ]
+            }
           })
         } else {
           if (this.$parent && this.$parent.__page__) {
@@ -158,6 +192,10 @@ export default {
 
     Vue.prototype.createIntersectionObserver = function createIntersectionObserver (args) {
       return uni.createIntersectionObserver(this, args)
+    }
+
+    Vue.prototype.createMediaQueryObserver = function createMediaQueryObserver (args) {
+      return uni.createMediaQueryObserver(this, args)
     }
 
     Vue.use(VueRouter)

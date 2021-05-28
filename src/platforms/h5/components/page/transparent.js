@@ -17,7 +17,7 @@ export default {
       const oldColors = []
       const borderRadiusElemsStyles = []
       for (let i = 0; i < borderRadiusElems.length; i++) {
-        let borderRadiusElem = borderRadiusElems[i]
+        const borderRadiusElem = borderRadiusElems[i]
         oldColors.push(getComputedStyle(borderRadiusElem).backgroundColor)
         borderRadiusElemsStyles.push(borderRadiusElem.style)
       }
@@ -45,13 +45,27 @@ export default {
         }
         transparentElemStyle.backgroundColor = `rgba(${this._R},${this._G},${this._B},${alpha})`
         borderRadiusElemsStyles.forEach(function (borderRadiusElemStyle, index) {
-          let oldColor = oldColors[index]
+          const oldColor = oldColors[index]
           // eslint-disable-next-line
           let rgba = oldColor.match(/[\d+\.]+/g)
           rgba[3] = (1 - alpha) * (rgba.length === 4 ? rgba[3] : 1)
           borderRadiusElemStyle.backgroundColor = `rgba(${rgba})`
         })
       })
+    } else if (this.type === 'float') {
+      const iconElems = this.$el.querySelectorAll('.uni-btn-icon')
+      const iconElemsStyles = []
+      for (let i = 0; i < iconElems.length; i++) {
+        iconElemsStyles.push(iconElems[i].style)
+      }
+      const borderRadiusElems = this.$el.querySelectorAll('.uni-page-head-btn')
+      const oldColors = []
+      const borderRadiusElemsStyles = []
+      for (let i = 0; i < borderRadiusElems.length; i++) {
+        const borderRadiusElem = borderRadiusElems[i]
+        oldColors.push(getComputedStyle(borderRadiusElem).backgroundColor)
+        borderRadiusElemsStyles.push(borderRadiusElem.style)
+      }
     }
   },
   computed: {

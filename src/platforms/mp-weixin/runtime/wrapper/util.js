@@ -2,12 +2,15 @@ export const mocks = ['__route__', '__wxExparserNodeId__', '__wxWebviewId__']
 
 export function findVmByVueId (vm, vuePid) {
   const $children = vm.$children
-  // 优先查找直属
-  let parentVm = $children.find(childVm => childVm.$scope._$vueId === vuePid)
-  if (parentVm) {
-    return parentVm
+  // 优先查找直属(反向查找:https://github.com/dcloudio/uni-app/issues/1200)
+  for (let i = $children.length - 1; i >= 0; i--) {
+    const childVm = $children[i]
+    if (childVm.$scope._$vueId === vuePid) {
+      return childVm
+    }
   }
   // 反向递归查找
+  let parentVm
   for (let i = $children.length - 1; i >= 0; i--) {
     parentVm = findVmByVueId($children[i], vuePid)
     if (parentVm) {
@@ -28,16 +31,28 @@ export function initRelation (detail) {
   this.triggerEvent('__l', detail)
 }
 
+function selectAllComponents (mpInstance, selector, $refs) {
+  const components = mpInstance.selectAllComponents(selector)
+  components.forEach(component => {
+    const ref = component.dataset.ref
+    $refs[ref] = component.$vm || component
+    if (__PLATFORM__ === 'mp-weixin') {
+      if (component.dataset.vueGeneric === 'scoped') {
+        component.selectAllComponents('.scoped-ref').forEach(scopedComponent => {
+          selectAllComponents(scopedComponent, selector, $refs)
+        })
+      }
+    }
+  })
+}
+
 export function initRefs (vm) {
   const mpInstance = vm.$scope
   Object.defineProperty(vm, '$refs', {
     get () {
       const $refs = {}
-      const components = mpInstance.selectAllComponents('.vue-ref')
-      components.forEach(component => {
-        const ref = component.dataset.ref
-        $refs[ref] = component.$vm || component
-      })
+      selectAllComponents(mpInstance, '.vue-ref', $refs)
+      // TODO 暂不考虑 for 中的 scoped
       const forComponents = mpInstance.selectAllComponents('.vue-ref-in-for')
       forComponents.forEach(component => {
         const ref = component.dataset.ref

@@ -1,160 +1,189 @@
-/**
- * 可以批量设置的监听事件
- */
-const innerAudioContextEventNames = ['onCanplay', 'onPlay', 'onPause', 'onStop', 'onEnded', 'onTimeUpdate', 'onError', 'onWaiting', 'onSeeking', 'onSeeked']
+import {
+  onMethod,
+  invokeMethod
+} from '../../platform'
 
-const innerAudioContextOffEventNames = ['offCanplay', 'offPlay', 'offPause', 'offStop', 'offEnded', 'offTimeUpdate', 'offError', 'offWaiting', 'offSeeking', 'offSeeke']
+const eventNames = [
+  'canplay',
+  'play',
+  'pause',
+  'stop',
+  'ended',
+  'timeUpdate',
+  'error',
+  'waiting',
+  'seeking',
+  'seeked'
+]
 
-/**
- * 音频上下文对象
- */
+const props = [
+  {
+    name: 'src',
+    cache: true
+  },
+  {
+    name: 'startTime',
+    default: 0,
+    cache: true
+  },
+  {
+    name: 'autoplay',
+    default: false,
+    cache: true
+  },
+  {
+    name: 'loop',
+    default: false,
+    cache: true
+  },
+  {
+    name: 'obeyMuteSwitch',
+    default: true,
+    readonly: true,
+    cache: true
+  },
+  {
+    name: 'duration',
+    readonly: true
+  },
+  {
+    name: 'currentTime',
+    readonly: true
+  },
+  {
+    name: 'paused',
+    readonly: true
+  },
+  {
+    name: 'buffered',
+    readonly: true
+  },
+  {
+    name: 'volume'
+  }
+]
+
 class InnerAudioContext {
-  /**
-   * 原始音频对象
-   */
-  _audio
-  /**
-   * 是否暂停中
-   */
-  _stoping
-  /**
-   * 开始时间
-   */
-  startTime
-  /**
-   * 事件监听
-   */
-  _events
-  /**
-   * 音频上下文初始化
-   */
-  constructor () {
-    var audio = this._audio = new Audio()
-    this._stoping = false
-    // 和audio对象同名同效果的属性
-    var watchers = ['src', 'autoplay', 'loop', 'duration', 'currentTime', 'paused', 'volume']
-    watchers.forEach((watcher) => {
-      Object.defineProperty(this, watcher, {
-        set (val) {
-          audio[watcher] = val
-          return audio[watcher]
-        },
+  constructor (id) {
+    this.id = id
+    this._callbacks = {}
+    this._options = {}
+    eventNames.forEach(name => {
+      this._callbacks[name.toLowerCase()] = []
+    })
+    props.forEach(item => {
+      const name = item.name
+      const data = {
         get () {
-          return audio[watcher]
-        }
-      })
-    })
-    this.startTime = 0
-    Object.defineProperty(this, 'obeyMuteSwitch', {
-      set (val) {
-        return false
-      },
-      get () {
-        return false
-      }
-    })
-    Object.defineProperty(this, 'buffered', {
-      get () {
-        var buffered = audio.buffered
-        if (buffered.length) {
-          return buffered[buffered.length - 1].end()
-        } else {
-          return 0
+          const result = item.cache ? this._options : invokeMethod('getAudioState', {
+            audioId: this.id
+          })
+          const value = name in result ? result[name] : item.default
+          return typeof value === 'number' && name !== 'volume' ? value / 1e3 : value
         }
       }
-    })
-    // 初始化事件监听列表
-    this._events = {}
-    innerAudioContextEventNames.forEach(eventName => {
-      this._events[eventName] = []
-    })
-    audio.addEventListener('loadedmetadata', () => {
-      var startTime = Number(this.startTime) || 0
-      if (startTime > 0) {
-        audio.currentTime = startTime
-      }
-    })
-    // 和audio对象同名同效果的事件
-    var eventNames = ['canplay', 'play', 'pause', 'ended', 'timeUpdate', 'error', 'waiting', 'seeking', 'seeked']
-    var stopEventNames = ['pause', 'seeking', 'seeked', 'timeUpdate']
-    eventNames.forEach(eventName => {
-      audio.addEventListener(eventName.toLowerCase(), () => {
-        // stop事件过滤
-        if (this._stoping && stopEventNames.indexOf(eventName) >= 0) {
-          return
+      if (!item.readonly) {
+        data.set = function (value) {
+          this._options[name] = value
+          invokeMethod('setAudioState', Object.assign({}, this._options, {
+            audioId: this.id
+          }))
         }
-        this._events[`on${eventName.substr(0, 1).toUpperCase()}${eventName.substr(1)}`].forEach((callback) => {
-          callback()
-        })
-      }, false)
+      }
+      Object.defineProperty(this, name, data)
     })
   }
-  /**
-   * 播放
-   */
+
   play () {
-    this._stoping = false
-    this._audio.play()
+    this._operate('play')
   }
-  /**
-   * 暂停
-   */
+
   pause () {
-    this._audio.pause()
+    this._operate('pause')
   }
-  /**
-   * 停止
-   */
+
   stop () {
-    this._stoping = true
-    this._audio.pause()
-    this._audio.currentTime = 0
-    this._events.onStop.forEach((callback) => {
-      callback()
+    this._operate('stop')
+  }
+
+  seek (position) {
+    this._operate('seek', {
+      currentTime: position * 1e3
     })
   }
-  /**
-   * 跳转到
-   * @param {number} position
-   */
-  seek (position) {
-    this._stoping = false
-    position = Number(position)
-    if (typeof position === 'number' && !isNaN(position)) {
-      this._audio.currentTime = position
-    }
-  }
-  /**
-   * 销毁
-   */
+
   destroy () {
-    this.stop()
+    clearInterval(this.__timing)
+    invokeMethod('destroyAudioInstance', {
+      audioId: this.id
+    })
+    delete innerAudioContexts[this.id]
+  }
+
+  _operate (type, options) {
+    invokeMethod('operateAudio', Object.assign({}, options, {
+      audioId: this.id,
+      operationType: type
+    }))
   }
 }
 
-// 批量设置音频上下文事件监听方法
-innerAudioContextEventNames.forEach((eventName) => {
-  InnerAudioContext.prototype[eventName] = function (callback) {
-    if (typeof callback === 'function') {
-      this._events[eventName].push(callback)
-    }
+eventNames.forEach(item => {
+  const name = item[0].toUpperCase() + item.substr(1)
+  item = item.toLowerCase()
+  InnerAudioContext.prototype[`on${name}`] = function (callback) {
+    this._callbacks[item].push(callback)
   }
-})
-
-// 批量设置音频上下文事件取消监听方法
-innerAudioContextOffEventNames.forEach((eventName) => {
-  InnerAudioContext.prototype[eventName] = function (callback) {
-    var handle = this._events[eventName.replace('off', 'on')]
-    var index = handle.indexOf(callback)
+  InnerAudioContext.prototype[`off${name}`] = function (callback) {
+    const callbacks = this._callbacks[item]
+    const index = callbacks.indexOf(callback)
     if (index >= 0) {
-      handle.splice(index, 1)
+      callbacks.splice(index, 1)
     }
   }
 })
 
-/**
- * 创建音频上下文
- */
+function emit (audio, state, errMsg, errCode) {
+  audio._callbacks[state].forEach(callback => {
+    if (typeof callback === 'function') {
+      callback(state === 'error' ? {
+        errMsg,
+        errCode
+      } : {})
+    }
+  })
+}
+
+onMethod('onAudioStateChange', ({
+  state,
+  audioId,
+  errMsg,
+  errCode
+}) => {
+  const audio = innerAudioContexts[audioId]
+  if (audio) {
+    emit(audio, state, errMsg, errCode)
+    if (state === 'play') {
+      const oldCurrentTime = audio.currentTime
+      audio.__timing = setInterval(() => {
+        const currentTime = audio.currentTime
+        if (currentTime !== oldCurrentTime) {
+          emit(audio, 'timeupdate')
+        }
+      }, 200)
+    } else if (state === 'pause' || state === 'stop' || state === 'error') {
+      clearInterval(audio.__timing)
+    }
+  }
+})
+
+const innerAudioContexts = Object.create(null)
+
 export function createInnerAudioContext () {
-  return new InnerAudioContext()
+  const {
+    audioId
+  } = invokeMethod('createAudioInstance')
+  const innerAudioContext = new InnerAudioContext(audioId)
+  innerAudioContexts[audioId] = innerAudioContext
+  return innerAudioContext
 }

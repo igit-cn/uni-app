@@ -1,17 +1,21 @@
+import {
+  hasOwn
+} from 'uni-shared'
 import createCallbacks from 'uni-helpers/callbacks'
-import { wrapper, pixelRatio } from 'uni-helpers/hidpi'
+
+import {
+  getCurrentPageId
+} from '../../platform'
+
+import {
+  invoke
+} from '../../bridge'
+
+import {
+  TEMP_PATH
+} from 'uni-platform/service/api/constants'
 
 const canvasEventCallbacks = createCallbacks('canvasEvent')
-
-UniServiceJSBridge.subscribe('onDrawCanvas', ({
-  callbackId,
-  data
-}) => {
-  const callback = canvasEventCallbacks.pop(callbackId)
-  if (callback) {
-    callback(data)
-  }
-})
 
 UniServiceJSBridge.subscribe('onCanvasMethodCallback', ({
   callbackId,
@@ -184,11 +188,13 @@ const predefinedColor = {
 }
 
 function checkColor (e) {
+  // 其他开发者适配的echarts会传入一个undefined到这里
+  e = e || '#000000'
   var t = null
   if ((t = /^#([0-9|A-F|a-f]{6})$/.exec(e)) != null) {
-    let n = parseInt(t[1].slice(0, 2), 16)
-    let o = parseInt(t[1].slice(2, 4), 16)
-    let r = parseInt(t[1].slice(4), 16)
+    const n = parseInt(t[1].slice(0, 2), 16)
+    const o = parseInt(t[1].slice(2, 4), 16)
+    const r = parseInt(t[1].slice(4), 16)
     return [n, o, r, 255]
   }
   if ((t = /^#([0-9|A-F|a-f]{3})$/.exec(e)) != null) {
@@ -211,23 +217,17 @@ function checkColor (e) {
     })
   }
   var i = e.toLowerCase()
-  if (predefinedColor.hasOwnProperty(i)) {
+  if (hasOwn(predefinedColor, i)) {
     t = /^#([0-9|A-F|a-f]{6,8})$/.exec(predefinedColor[i])
-    let n = parseInt(t[1].slice(0, 2), 16)
-    let o = parseInt(t[1].slice(2, 4), 16)
-    let r = parseInt(t[1].slice(4, 6), 16)
+    const n = parseInt(t[1].slice(0, 2), 16)
+    const o = parseInt(t[1].slice(2, 4), 16)
+    const r = parseInt(t[1].slice(4, 6), 16)
     let a = parseInt(t[1].slice(6, 8), 16)
     a = a >= 0 ? a : 255
     return [n, o, r, a]
   }
-  console.group('非法颜色: ' + e)
-  console.error('不支持颜色：' + e)
-  console.groupEnd()
+  console.error('unsupported color:' + e)
   return [0, 0, 0, 255]
-}
-
-function TextMetrics (width) {
-  this.width = width
 }
 
 function Pattern (image, repetition) {
@@ -241,6 +241,7 @@ class CanvasGradient {
     this.data = data
     this.colorStop = []
   }
+
   addColorStop (position, color) {
     this.colorStop.push([position, checkColor(color)])
   }
@@ -254,22 +255,18 @@ var methods3 = ['setFillStyle', 'setTextAlign', 'setStrokeStyle', 'setGlobalAlph
   'setTextBaseline', 'setLineDash'
 ]
 
-var tempCanvas
-function getTempCanvas (width, height) {
-  if (!tempCanvas) {
-    tempCanvas = document.createElement('canvas')
-  }
-  if (typeof width !== 'undefined' && typeof height !== 'undefined') {
-    if (tempCanvas.width !== width || tempCanvas.height !== height) {
-      tempCanvas.width = width / pixelRatio
-      tempCanvas.height = height / pixelRatio
-      wrapper(tempCanvas)
-    }
-  }
-  return tempCanvas
+function measureText (text, font) {
+  const canvas = document.createElement('canvas')
+  const c2d = canvas.getContext('2d')
+  c2d.font = font
+  return c2d.measureText(text).width || 0
 }
 
-class CanvasContext {
+function TextMetrics (width) {
+  this.width = width
+}
+
+export class CanvasContext {
   constructor (id, pageId) {
     this.id = id
     this.pageId = pageId
@@ -292,6 +289,7 @@ class CanvasContext {
       fontFamily: 'sans-serif'
     }
   }
+
   draw (reserve = false, callback) {
     var actions = [...this.actions]
     this.actions = []
@@ -308,26 +306,40 @@ class CanvasContext {
       callbackId
     })
   }
+
   createLinearGradient (x0, y0, x1, y1) {
     return new CanvasGradient('linear', [x0, y0, x1, y1])
   }
+
   createCircularGradient (x, y, r) {
     return new CanvasGradient('radial', [x, y, r])
   }
+
   createPattern (image, repetition) {
     if (undefined === repetition) {
       console.error("Failed to execute 'createPattern' on 'CanvasContext': 2 arguments required, but only 1 present.")
     } else if (['repeat', 'repeat-x', 'repeat-y', 'no-repeat'].indexOf(repetition) < 0) {
-      console.error("Failed to execute 'createPattern' on 'CanvasContext': The provided type ('" + repetition + "') is not one of 'repeat', 'no-repeat', 'repeat-x', or 'repeat-y'.")
+      console.error("Failed to execute 'createPattern' on 'CanvasContext': The provided type ('" + repetition +
+        "') is not one of 'repeat', 'no-repeat', 'repeat-x', or 'repeat-y'.")
     } else {
       return new Pattern(image, repetition)
     }
   }
+
   measureText (text) {
-    var c2d = getTempCanvas().getContext('2d')
-    c2d.font = this.state.font
-    return new TextMetrics(c2d.measureText(text).width || 0)
+    const font = this.state.font
+    let width = 0
+    if (__PLATFORM__ === 'h5') {
+      width = measureText(text, font)
+    } else {
+      const webview = plus.webview.all().find(webview => webview.getURL().endsWith('www/__uniappview.html'))
+      if (webview) {
+        width = Number(webview.evalJSSync(`(${measureText.toString()})(${JSON.stringify(text)},${JSON.stringify(font)})`))
+      }
+    }
+    return new TextMetrics(width)
   }
+
   save () {
     this.actions.push({
       method: 'save',
@@ -335,6 +347,7 @@ class CanvasContext {
     })
     this.drawingState.push(this.state)
   }
+
   restore () {
     this.actions.push({
       method: 'restore',
@@ -353,10 +366,12 @@ class CanvasContext {
       fontFamily: 'sans-serif'
     }
   }
+
   beginPath () {
     this.path = []
     this.subpath = []
   }
+
   moveTo (x, y) {
     this.path.push({
       method: 'moveTo',
@@ -366,6 +381,7 @@ class CanvasContext {
       [x, y]
     ]
   }
+
   lineTo (x, y) {
     if (this.path.length === 0 && this.subpath.length === 0) {
       this.path.push({
@@ -380,6 +396,7 @@ class CanvasContext {
     }
     this.subpath.push([x, y])
   }
+
   quadraticCurveTo (cpx, cpy, x, y) {
     this.path.push({
       method: 'quadraticCurveTo',
@@ -387,6 +404,7 @@ class CanvasContext {
     })
     this.subpath.push([x, y])
   }
+
   bezierCurveTo (cp1x, cp1y, cp2x, cp2y, x, y) {
     this.path.push({
       method: 'bezierCurveTo',
@@ -394,6 +412,7 @@ class CanvasContext {
     })
     this.subpath.push([x, y])
   }
+
   arc (x, y, r, sAngle, eAngle, counterclockwise = false) {
     this.path.push({
       method: 'arc',
@@ -401,6 +420,7 @@ class CanvasContext {
     })
     this.subpath.push([x, y])
   }
+
   rect (x, y, width, height) {
     this.path.push({
       method: 'rect',
@@ -410,6 +430,7 @@ class CanvasContext {
       [x, y]
     ]
   }
+
   arcTo (x1, y1, x2, y2, radius) {
     this.path.push({
       method: 'arcTo',
@@ -417,12 +438,14 @@ class CanvasContext {
     })
     this.subpath.push([x2, y2])
   }
+
   clip () {
     this.actions.push({
       method: 'clip',
       data: [...this.path]
     })
   }
+
   closePath () {
     this.path.push({
       method: 'closePath',
@@ -432,52 +455,61 @@ class CanvasContext {
       this.subpath = [this.subpath.shift()]
     }
   }
+
   clearActions () {
     this.actions = []
     this.path = []
     this.subpath = []
   }
+
   getActions () {
     var actions = [...this.actions]
     this.clearActions()
     return actions
   }
+
   set lineDashOffset (value) {
     this.actions.push({
       method: 'setLineDashOffset',
       data: [value]
     })
   }
+
   set globalCompositeOperation (type) {
     this.actions.push({
       method: 'setGlobalCompositeOperation',
       data: [type]
     })
   }
+
   set shadowBlur (level) {
     this.actions.push({
       method: 'setShadowBlur',
       data: [level]
     })
   }
+
   set shadowColor (color) {
     this.actions.push({
       method: 'setShadowColor',
       data: [color]
     })
   }
+
   set shadowOffsetX (x) {
     this.actions.push({
       method: 'setShadowOffsetX',
       data: [x]
     })
   }
+
   set shadowOffsetY (y) {
     this.actions.push({
       method: 'setShadowOffsetY',
       data: [y]
     })
   }
+
   set font (value) {
     var self = this
     this.state.font = value
@@ -526,6 +558,7 @@ class CanvasContext {
     } else {
       console.warn("Failed to set 'font' on 'CanvasContext': invalid format.")
     }
+
     function pushAction () {
       actions.push({
         method: 'setFontWeight',
@@ -534,15 +567,19 @@ class CanvasContext {
       self.state.fontWeight = 'normal'
     }
   }
+
   get font () {
     return this.state.font
   }
+
   set fillStyle (color) {
     this.setFillStyle(color)
   }
+
   set strokeStyle (color) {
     this.setStrokeStyle(color)
   }
+
   set globalAlpha (value) {
     value = Math.floor(255 * parseFloat(value))
     this.actions.push({
@@ -550,36 +587,42 @@ class CanvasContext {
       data: [value]
     })
   }
+
   set textAlign (align) {
     this.actions.push({
       method: 'setTextAlign',
       data: [align]
     })
   }
+
   set lineCap (type) {
     this.actions.push({
       method: 'setLineCap',
       data: [type]
     })
   }
+
   set lineJoin (type) {
     this.actions.push({
       method: 'setLineJoin',
       data: [type]
     })
   }
+
   set lineWidth (value) {
     this.actions.push({
       method: 'setLineWidth',
       data: [value]
     })
   }
+
   set miterLimit (value) {
     this.actions.push({
       method: 'setMiterLimit',
       data: [value]
     })
   }
+
   set textBaseline (type) {
     this.actions.push({
       method: 'setTextBaseline',
@@ -644,10 +687,13 @@ class CanvasContext {
             dHeight = undefined
           }
           var data
+
           function isNumber (e) {
             return typeof e === 'number'
           }
-          data = isNumber(dx) && isNumber(dy) && isNumber(dWidth) && isNumber(dHeight) ? [imageResource, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight] : isNumber(sWidth) && isNumber(
+          data = isNumber(dx) && isNumber(dy) && isNumber(dWidth) && isNumber(dHeight) ? [imageResource, sx, sy,
+            sWidth, sHeight, dx, dy, dWidth, dHeight
+          ] : isNumber(sWidth) && isNumber(
             sHeight) ? [imageResource, sx, sy, sWidth, sHeight] : [imageResource, sx, sy]
           this.actions.push({
             method,
@@ -738,17 +784,13 @@ export function createCanvasContext (id, context) {
   if (context) {
     return new CanvasContext(id, context.$page.id)
   }
-  const app = getApp()
-  if (app.$route && app.$route.params.__id__) {
-    return new CanvasContext(id, app.$route.params.__id__)
+  const pageId = getCurrentPageId()
+  if (pageId) {
+    return new CanvasContext(id, pageId)
   } else {
     UniServiceJSBridge.emit('onError', 'createCanvasContext:fail')
   }
 }
-
-const {
-  invokeCallbackHandler: invoke
-} = UniServiceJSBridge
 
 export function canvasGetImageData ({
   canvasId,
@@ -757,19 +799,21 @@ export function canvasGetImageData ({
   width,
   height
 }, callbackId) {
-  var pageId
-  const app = getApp()
-  if (app.$route && app.$route.params.__id__) {
-    pageId = app.$route.params.__id__
-  } else {
+  const pageId = getCurrentPageId()
+  if (!pageId) {
     invoke(callbackId, {
       errMsg: 'canvasGetImageData:fail'
     })
     return
   }
-  var cId = canvasEventCallbacks.push(function (data) {
-    var imgData = data.data
+  const cId = canvasEventCallbacks.push(function (data) {
+    let imgData = data.data
     if (imgData && imgData.length) {
+      if (__PLATFORM__ === 'app-plus' && data.compressed) {
+        const pako = require('pako')
+        imgData = pako.inflateRaw(imgData)
+        delete data.compressed
+      }
       data.data = new Uint8ClampedArray(imgData)
     }
     invoke(callbackId, data)
@@ -791,11 +835,8 @@ export function canvasPutImageData ({
   width,
   height
 }, callbackId) {
-  var pageId
-  const app = getApp()
-  if (app.$route && app.$route.params.__id__) {
-    pageId = app.$route.params.__id__
-  } else {
+  var pageId = getCurrentPageId()
+  if (!pageId) {
     invoke(callbackId, {
       errMsg: 'canvasPutImageData:fail'
     })
@@ -804,135 +845,60 @@ export function canvasPutImageData ({
   var cId = canvasEventCallbacks.push(function (data) {
     invoke(callbackId, data)
   })
+  let compressed
+  // iOS真机非调试模式压缩太慢暂时排除
+  if (__PLATFORM__ === 'app-plus' && (plus.os.name !== 'iOS' || typeof __WEEX_DEVTOOL__ === 'boolean')) {
+    const pako = require('pako')
+    data = pako.deflateRaw(data, { to: 'string' })
+    compressed = true
+  } else {
+    // fix ...
+    data = Array.prototype.slice.call(data)
+  }
+
   operateCanvas(canvasId, pageId, 'putImageData', {
-    data: [...data],
+    data,
     x,
     y,
     width,
     height,
+    compressed,
     callbackId: cId
   })
 }
 
 export function canvasToTempFilePath ({
-  x,
-  y,
+  x = 0,
+  y = 0,
   width,
   height,
   destWidth,
   destHeight,
   canvasId,
   fileType,
-  qualit
+  quality
 }, callbackId) {
-  if (typeof width !== 'undefined') {
-    width *= pixelRatio
-  }
-  if (typeof height !== 'undefined') {
-    height *= pixelRatio
-  }
-  var pageId
-  const app = getApp()
-  if (app.$route && app.$route.params.__id__) {
-    pageId = app.$route.params.__id__
-  } else {
+  var pageId = getCurrentPageId()
+  if (!pageId) {
     invoke(callbackId, {
       errMsg: 'canvasToTempFilePath:fail'
     })
     return
   }
-  var cId = canvasEventCallbacks.push(function (data) {
-    var imgData = data.data
-    if (!imgData || !imgData.length) {
-      invoke(callbackId, {
-        errMsg: 'canvasToTempFilePath:fail'
-      })
-      return
-    }
-    try {
-      imgData = new ImageData(new Uint8ClampedArray(imgData), data.width, data.height)
-    } catch (error) {
-      invoke(callbackId, {
-        errMsg: 'canvasToTempFilePath:fail'
-      })
-      return
-    }
-    var cWidth = (typeof destWidth !== 'undefined') ? (destWidth * pixelRatio) : data.width
-    var cHeight = (typeof destHeight !== 'undefined') ? (destHeight * pixelRatio) : data.height
-    var canvas = getTempCanvas(cWidth, cHeight)
-    var c2d = canvas.getContext('2d')
-    c2d.putImageData(imgData, 0, 0, 0, 0, imgData.width, imgData.height)
-    var imageType = (fileType ? fileType.toLowerCase() : 'png')
-    if (imageType === 'jpg') {
-      imageType = 'jpeg'
-    }
-
-    var dCanvas
-    var isDest = (typeof destWidth !== 'undefined' && typeof destHeight !== 'undefined')
-    if (isDest) {
-      dCanvas = document.createElement('canvas')
-      dCanvas.width = destWidth
-      dCanvas.height = destHeight
-    } else {
-      dCanvas = canvas.cloneNode(true)
-    }
-    var dCtx = dCanvas.getContext('2d')
-    if (imageType === 'jpeg') {
-      dCtx.fillStyle = '#fff'
-      dCtx.fillRect(0, 0, dCanvas.width, dCanvas.height)
-    }
-
-    if (isDest) {
-      dCtx.drawImageByCanvas(canvas, 0, 0, canvas.width, canvas.height, 0, 0, destWidth, destHeight, true)
-    } else {
-      dCtx.drawImage(canvas, 0, 0)
-    }
-    var base64 = dCanvas.toDataURL(`image/${imageType}`, qualit)
-
-    invoke(callbackId, {
-      errMsg: 'canvasToTempFilePath:ok',
-      tempFilePath: base64
-    })
-
-    // TODO base64返回的是高清图，如果将img通过drawImage画到等宽高的canvas会出现显示不全问题, drawImage在次做了高清处理
-    // var img = new Image()
-    // img.onload = function () {
-    //   canvas.width = destWidth || imgData.width
-    //   canvas.height = destHeight || imgData.height
-    //   c2d.drawImage(img, 0, 0)
-    //   base64 = canvas.toDataURL(`image/jpeg`, qualit)
-    //   invoke(callbackId, {
-    //     errMsg: 'canvasToTempFilePath:ok',
-    //     tempFilePath: base64
-    //   })
-    // }
-    // img.src = base64
+  const cId = canvasEventCallbacks.push(function (res) {
+    invoke(callbackId, res)
   })
-  operateCanvas(canvasId, pageId, 'getImageData', {
+  const dirname = `${TEMP_PATH}/canvas`
+  operateCanvas(canvasId, pageId, 'toTempFilePath', {
     x,
     y,
     width,
     height,
+    destWidth,
+    destHeight,
+    fileType,
+    quality,
+    dirname,
     callbackId: cId
   })
-}
-
-export function createContext () {
-  return new CanvasContext()
-}
-
-export function drawCanvas ({
-  canvasId,
-  actions,
-  reserve
-}) {
-  const app = getApp()
-  if (app.$route && app.$route.params.__id__) {
-    operateCanvas(canvasId, app.$route.params.__id__, 'actionsChanged', {
-      actions,
-      reserve
-    })
-  } else {
-    UniServiceJSBridge.emit('onError', 'drawCanvas:fail')
-  }
 }

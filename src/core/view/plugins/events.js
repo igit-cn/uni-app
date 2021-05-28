@@ -3,8 +3,8 @@ import {
 } from 'uni-shared'
 
 import {
-  normalizeDataset
-} from 'uni-helpers'
+  getTargetDataset
+} from 'uni-helpers/index'
 
 import {
   wrapperMPEvent
@@ -12,12 +12,12 @@ import {
 
 import getWindowOffset from 'uni-platform/helpers/get-window-offset'
 
-function processTarget (target, detail) {
+function processTarget (target, detail, checkShadowRoot = false) {
   const res = {
     id: target.id,
     offsetLeft: target.offsetLeft,
     offsetTop: target.offsetTop,
-    dataset: normalizeDataset(target.dataset)
+    dataset: getTargetDataset(target)
   }
   if (detail) {
     Object.assign(res, detail)
@@ -76,18 +76,40 @@ export function processEvent (name, $event = {}, detail = {}, target = {}, curre
   }
 
   // fixed mp-vue
-  return wrapperMPEvent({
+  const ret = wrapperMPEvent({
     type: detail.type || name,
     timeStamp: $event.timeStamp || 0,
     detail: detail,
     target: processTarget(target, detail),
-    currentTarget: processTarget(currentTarget),
+    currentTarget: processTarget(currentTarget, false, true),
     // 只处理系统事件
-    touches: $event instanceof Event ? processTouches($event.touches) : $event.touches,
-    changedTouches: $event instanceof Event ? processTouches($event.changedTouches) : $event.changedTouches,
-    preventDefault () { },
-    stopPropagation () { }
+    touches: ($event instanceof Event || $event instanceof CustomEvent) ? processTouches($event.touches) : $event.touches,
+    changedTouches: ($event instanceof Event || $event instanceof CustomEvent) ? processTouches($event.changedTouches)
+      : $event.changedTouches,
+    preventDefault () {},
+    stopPropagation () {}
   })
+
+  if (name.startsWith('mouse')) {
+    const {
+      top
+    } = getWindowOffset()
+    ret.pageX = $event.pageX
+    ret.pageY = $event.pageY - top
+    ret.clientX = $event.clientX
+    ret.clientY = $event.clientY - top
+  }
+
+  if (__PLATFORM__ === 'app-plus') {
+    const nid = currentTarget.getAttribute('_i')
+    ret.options = {
+      nid
+    }
+    // 保留原始 currentTarget 方便后续对比
+    ret.$origCurrentTarget = currentTarget
+  }
+
+  return ret
 }
 
 const LONGPRESS_TIMEOUT = 350
@@ -115,24 +137,23 @@ function touchstart (evt) {
     return
   }
   const {
-    touches: [{
-      pageX,
-      pageY
-    }]
-  } = evt
+    pageX,
+    pageY
+  } = evt.touches[0]
 
   startPageX = pageX
   startPageY = pageY
 
   longPressTimer = setTimeout(function () {
-    evt.target.dispatchEvent(new TouchEvent('longpress', {
+    const customEvent = new CustomEvent('longpress', {
       bubbles: true,
       cancelable: true,
       target: evt.target,
-      currentTarget: evt.currentTarget,
-      touches: evt.touches,
-      changedTouches: evt.changedTouches
-    }))
+      currentTarget: evt.currentTarget
+    })
+    customEvent.touches = evt.touches
+    customEvent.changedTouches = evt.changedTouches
+    evt.target.dispatchEvent(customEvent)
   }, LONGPRESS_TIMEOUT)
 }
 
@@ -146,11 +167,9 @@ function touchmove (evt) {
   }
 
   const {
-    touches: [{
-      pageX,
-      pageY
-    }]
-  } = evt
+    pageX,
+    pageY
+  } = evt.touches[0]
 
   if (Math.abs(pageX - startPageX) > LONGPRESS_THRESHOLD || Math.abs(pageY - startPageY) > LONGPRESS_THRESHOLD) {
     return clearLongPressTimer()
